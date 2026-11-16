@@ -28,15 +28,18 @@ export type GenerateOptions = {
 const QUOTA_COOLDOWN_MS = 6 * 3600_000;
 
 /** Promote an agent output; the media becomes addressable a moment later. */
-async function saveOnce(client: FlowClient, projectId: string, mediaId: string, attempts = 40): Promise<boolean> {
+async function saveOnce(client: FlowClient, projectId: string, mediaId: string, attempts = 30): Promise<boolean> {
+  let last = "";
   for (let i = 0; i < attempts; i++) {
     try {
       await client.saveAgentMedia(projectId, mediaId);
       return true;
-    } catch {
+    } catch (e: any) {
+      last = String(e?.message || e).slice(0, 300);
       await new Promise((r) => setTimeout(r, 1000));
     }
   }
+  console.error("saveAgentMedia gave up: " + last);
   return false;
 }
 
@@ -78,26 +81,35 @@ async function runOnAccount(acc: Account, workerIndex: number, model: ModelDef, 
 
     if (useAgent) {
       for (let i = 0; i < n; i++) {
-        const ids = refIds.length
-          ? await client.agentEdit({ projectId, prompt: opts.prompt, model, aspect, mediaIds: refIds })
-          : await client.agentGenerate({ projectId, prompt: opts.prompt, model, aspect });
-        // Fresh ids may include the reference images we just uploaded; only the
-        // agent's own output can be promoted with as29s.
-        const candidates = ids.filter((id) => !refIds.includes(id));
-        const pool = candidates.length ? candidates : ids;
-        if (!pool.length) throw new Error("agent generation returned no media");
-
-        const preferred = pool[Math.min(i, pool.length - 1)];
-        let mediaId = preferred;
         let saved = false;
-        for (const candidate of [preferred, ...pool.filter((id) => id !== preferred)]) {
-          if (await saveOnce(client, projectId, candidate)) {
-            mediaId = candidate;
-            saved = true;
-            break;
+        let mediaId = "";
+        let failure = "";
+        // A stream id that never becomes savable is a dead end: the turn's media
+        // was dropped upstream. Ask the agent for a fresh image instead of
+        // burning the whole request on as29s retries for the same id.
+        for (let attempt = 0; attempt < 2 && !saved; attempt++) {
+          const ids = refIds.length
+            ? await client.agentEdit({ projectId, prompt: opts.prompt, model, aspect, mediaIds: refIds })
+            : await client.agentGenerate({ projectId, prompt: opts.prompt, model, aspect });
+          // Fresh ids may include the reference images we just uploaded; only the
+          // agent's own output can be promoted with as29s.
+          const candidates = ids.filter((id) => !refIds.includes(id));
+          const pool = candidates.length ? candidates : ids;
+          if (!pool.length) {
+            failure = "agent generation returned no media";
+            continue;
           }
+          const preferred = pool[Math.min(i, pool.length - 1)];
+          for (const candidate of [preferred, ...pool.filter((id) => id !== preferred)]) {
+            if (await saveOnce(client, projectId, candidate)) {
+              mediaId = candidate;
+              saved = true;
+              break;
+            }
+          }
+          if (!saved) failure = "agent media was not savable (" + pool.join(",") + ")";
         }
-        if (!saved) throw new Error("agent media was not savable (" + pool.join(",") + ")");
+        if (!saved) throw new Error(failure || "agent generation returned no media");
 
         const t2 = await session.mint("IMAGE_GENERATION");
         const buffer = await client.upscale2k(projectId, mediaId, t2);

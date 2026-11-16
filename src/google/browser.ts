@@ -326,6 +326,8 @@ export class BrowserHub {
       "    while (Date.now() < deadline) {",
       "      const id = pickId();",
       "      if (id) { ctrl.abort(); return { ok: true, id }; }",
+      "      const s = window.__flowStream;",
+      "      if (s.indexOf('wait_for_reset') >= 0 || s.indexOf('upgrade_plan') >= 0) { ctrl.abort(); return { ok: false, step: 'quota', body: 'Flow asks to switch model or wait for quota reset' }; }",
       "      await new Promise((r) => setTimeout(r, 350));",
       "    }",
       "    ctrl.abort();",
@@ -338,6 +340,7 @@ export class BrowserHub {
     return this.run(account, index, async (w) => {
       const result: any = await w.page.evaluate(page);
       if (!result || !result.ok) {
+        if (result?.step === "quota") throw new Error("upstream quota exhausted for this model (" + String(result.body) + ")");
         throw new Error("agent chat failed: " + JSON.stringify(result).slice(0, 300));
       }
       return result.id ? String(result.id) : null;
