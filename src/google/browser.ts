@@ -76,18 +76,25 @@ export class BrowserHub {
     // One Chrome process for every account: each account gets its own isolated
     // browser context (cookies included), which is what keeps memory low.
     const browser = await this.launch();
-    const context = await browser.newContext({ locale: "zh-CN", viewport: { width: 1440, height: 900 } });
-    const cookies = account.cookies
-      .filter((c) => c.name && c.value)
-      .map((c) => ({
-        name: c.name,
-        value: c.value,
-        domain: c.domain || ".google.com",
-        path: c.path || "/",
-        secure: true,
-        sameSite: "None" as const,
-      }));
-    for (const c of cookies) await context.addCookies([c as any]).catch(() => {});
+    // Attached Chrome (CHROME_CDP_URL) is a real logged-in profile: its default
+    // context already owns the live session cookies, and copying the cookie jar
+    // into a fresh incognito context loses Google's device-bound session.
+    const context = config.chromeCdpUrl
+      ? browser.contexts()[0] ?? (await browser.newContext({ locale: "zh-CN", viewport: { width: 1440, height: 900 } }))
+      : await browser.newContext({ locale: "zh-CN", viewport: { width: 1440, height: 900 } });
+    if (!config.chromeCdpUrl) {
+      const cookies = account.cookies
+        .filter((c) => c.name && c.value)
+        .map((c) => ({
+          name: c.name,
+          value: c.value,
+          domain: c.domain || ".google.com",
+          path: c.path || "/",
+          secure: true,
+          sameSite: "None" as const,
+        }));
+      for (const c of cookies) await context.addCookies([c as any]).catch(() => {});
+    }
     const slot: AccountSlot = { context, workers: [] };
     this.slots.set(account.id, slot);
     await this.evictIfNeeded(account.id);
@@ -327,7 +334,8 @@ export class BrowserHub {
       "      const id = pickId();",
       "      if (id) { ctrl.abort(); return { ok: true, id }; }",
       "      const s = window.__flowStream;",
-      "      if (s.indexOf('wait_for_reset') >= 0 || s.indexOf('upgrade_plan') >= 0) { ctrl.abort(); return { ok: false, step: 'quota', body: 'Flow asks to switch model or wait for quota reset' }; }",
+      "      const q = s.indexOf('PER_MODEL_DAILY_QUOTA') >= 0 ? 'daily quota reached for this model' : (s.indexOf('wait_for_reset') >= 0 || s.indexOf('upgrade_plan') >= 0) ? 'Flow asks to switch model or wait for quota reset' : '';",
+      "      if (q) { ctrl.abort(); return { ok: false, step: 'quota', body: q }; }",
       "      await new Promise((r) => setTimeout(r, 350));",
       "    }",
       "    ctrl.abort();",
