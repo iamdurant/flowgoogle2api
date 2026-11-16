@@ -1,0 +1,13 @@
+{
+  "accounts": [
+    {
+      "id": "main",
+      "email": "you@gmail.com",
+      "cookies": [
+        { "name": "SID", "value": "xxx", "domain": ".google.com", "path": "/" },
+        { "name": "SAPISID", "value": "xxx", "domain": ".google.com", "path": "/" },
+        { "name": "OSID", "value": "xxx", "domain": "flow.google.com", "path": "/" }
+      ]
+    }
+  ]
+}

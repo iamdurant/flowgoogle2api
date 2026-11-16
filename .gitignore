@@ -1,0 +1,16 @@
+node_modules/
+dist/
+*.tsbuildinfo
+
+# runtime data (cookies, generated images, login profiles)
+data/accounts.json
+data/images/
+data/profiles/
+data/*.local
+
+# local recon scratch
+_recon/
+
+# env & logs
+.env
+*.log

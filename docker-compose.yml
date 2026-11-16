@@ -1,0 +1,15 @@
+services:
+  app:
+    build: ./docker/app
+    restart: unless-stopped
+    shm_size: "1gb"          # Chrome needs a bigger /dev/shm
+    environment:
+      AUTH_KEY: ${AUTH_KEY:-change-me}
+      FLOW_PROXY: ${FLOW_PROXY:-}
+      PORT: "3000"
+      MAX_CONCURRENCY: ${MAX_CONCURRENCY:-4}
+      WORKERS_PER_ACCOUNT: ${WORKERS_PER_ACCOUNT:-2}
+    volumes:
+      - ./data:/app/data     # accounts.json + generated images
+    ports:
+      - "3000:3000"
