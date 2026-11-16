@@ -97,6 +97,8 @@ export class FlowClient {
     token: string;
     refs?: string[];
     conversationId?: string | null;
+    /** Flow aspect enum (1=1:1, 2=9:16, 3=16:9, 4=3:4, 5=4:3); the UI sends it in the request. */
+    aspect?: number;
   }): Promise<GenResult> {
     const { projectId, prompt, model, token } = opts;
     const ctx = [
@@ -123,7 +125,7 @@ export class FlowClient {
           null,
           refs,
           Math.floor(Math.random() * 2_000_000_000),
-          3,
+          opts.aspect ?? 3,
           model.rpcModel,
           null,
           ctx,

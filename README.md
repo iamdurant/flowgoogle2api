@@ -21,10 +21,10 @@ Fastify 服务 ── 账号池 / 并发闸门 / 图片托管
 └── context(account B) ── worker tab ×N
    │
    ▼
-flow.google.com  (batchexecute RPC + WebChannel 智能体)
+flow.google.com  (batchexecute RPC)
 ```
 
-生成走 Flow 智能体通道：比例拼在 prompt 末尾，由 Agent 解析后驱动模型；出图后`as29s`保存到项目，再用`SPrCad`做 2K 高清重塑。
+生成与编辑走 `ogiZ0b` 直连 RPC，比例作为请求里的枚举字段随请求下发（1:1=1、9:16=2、16:9=3、3:4=4、4:3=5）；出图后用 `SPrCad` 做 2K 高清重塑。智能体通道仅作为可选路径（`AGENT_MODE=true`），默认关闭。
 
 ## 快速开始
 
@@ -57,7 +57,7 @@ curl http://127.0.0.1:3000/v1/images/generations \
 | `n` | 1–4，多张时并发生成 |
 | `size` | 如 `1024x1536`，按比例就近映射到 5 档 |
 | `aspect_ratio` | `1:1` / `4:3` / `3:4` / `16:9` / `9:16`，优先于 size |
-| `quality` | `2k`（默认）/ `1k`；当前 agent 通道统一输出 2K，`1k` 不降级 |
+| `quality` | `2k`（默认，长边约 2K）/ `1k`；仅 2K 会走 `SPrCad` 重塑 |
 | `response_format` | `url`（默认，图片托管在本服务）/ `b64_json` |
 
 ### POST /v1/images/edits

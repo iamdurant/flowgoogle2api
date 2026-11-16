@@ -1,7 +1,7 @@
 import { Session, RpcError } from "./google/session.js";
 import { FlowClient, downloadImage } from "./flow/client.js";
 import { accountPool, type Account } from "./accounts.js";
-import { findModel, type ModelDef } from "./models.js";
+import { findModel, ASPECT_ENUM, type ModelDef } from "./models.js";
 import { config } from "./config.js";
 import { Semaphore } from "./semaphore.js";
 
@@ -118,22 +118,6 @@ async function runOnAccount(acc: Account, workerIndex: number, model: ModelDef, 
       return out;
     }
 
-    if (!refIds.length && aspect !== "16:9") {
-      for (let i = 0; i < n; i++) {
-        const ids = await client.agentGenerate({ projectId, prompt: opts.prompt, model, aspect });
-        const mediaId = ids[Math.min(i, ids.length - 1)];
-        if (!mediaId) throw new Error("agent generation returned no media");
-
-        if (!(await saveOnce(client, projectId, mediaId))) {
-          throw new Error("agent media was not savable (media id " + mediaId + ")");
-        }
-        const t2 = await session.mint("IMAGE_GENERATION");
-        const buffer = await client.upscale2k(projectId, mediaId, t2);
-        out.push({ buffer, contentType: "image/jpeg", mediaId });
-      }
-      return out;
-    }
-
     for (let i = 0; i < n; i++) {
       const token = await session.mint("IMAGE_GENERATION");
       const gen = await client.generate({
@@ -142,6 +126,7 @@ async function runOnAccount(acc: Account, workerIndex: number, model: ModelDef, 
         model,
         token,
         refs: refIds.length ? refIds : undefined,
+        aspect: ASPECT_ENUM[aspect] ?? ASPECT_ENUM["16:9"],
       });
 
       let buffer: Buffer | null = null;

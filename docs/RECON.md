@@ -70,7 +70,8 @@ f.req=<urlencode(JSON.stringify([[[rpcid, JSON.stringify(inner), null, "generic"
 `<ctx>` = `[null, 22, null, null, <conversationId|null>, "<projectId>", null,null,null,null, ["<recaptchaToken>", 1]]`
 
 - `refs`：文生图传 `null`；编辑传 `[["<mediaId>", null, null, null, 2]]`（可多张）
-- `ctx[1] = 22` 是常量，**不是**比例；实际比例由项目默认设置 `Kcr7Ub` 决定
+- `ctx[1] = 22` 是工具常量，**不是**比例
+- 比例是请求体里的枚举 `inner[1][0][0][4]`：1=1:1、2=9:16、3=16:9、4=3:4、5=4:3（2026-11-16 抓网页端真实请求确认；此前把它写死成 3 才导致“画布固定 16:9”的误判）
 - 末尾必须是 `["UUID2"]`（数组包一个字符串）。写成 `[["UUID2"]]` 会返回 `[3]`（INVALID_ARGUMENT）
 - `conversationId` 可为 null（自动新建会话）
 
@@ -141,7 +142,7 @@ flow.google.com 的登录态需要两类 cookie：
   1. `mrlkwd` 列会话 → `GN0Bre` 取详情，遍历结构找 `["image", ..., "<uuid>"]` 得到 agent 媒体 id
   2. `as29s` 传该 id（=「保存到项目」），媒体才变成可寻址；刚出图时可能返回 `[5]`，需要重试
   3. `SPrCad` 传该 id 得到 2K base64
-- 直连 RPC（`ogiZ0b`）的画布固定 16:9，prompt 里写比例无效（实测 9:16/1:1/4:3 都是 1376x768）
+- 直连 RPC（`ogiZ0b`）支持全部 5 档比例（2026-11-16 实测 1:1=1024x1024、9:16=768x1376、4:3=1200x896、16:9=1376x768；2K 后 4:3 为 2400x1792）
 - **带参考图**：消息 parts 就是「文本部件 + 媒体部件」的平铺数组，例如
   `[["把圆形改成绿色 1:1"], ["<mediaId>"]]`（媒体部件是只含 id 的单元素数组）。
   实测 agent 能正确识别图片内容（会描述出图片里的黄色圆形/蓝色横条），多张就并列多个媒体部件。

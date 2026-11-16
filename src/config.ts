@@ -16,5 +16,5 @@ export const config = {
   maxConcurrency: Number(process.env.MAX_CONCURRENCY || 128),
   queueTimeoutMs: Number(process.env.QUEUE_TIMEOUT_MS || 120_000),
   workersPerAccount: Number(process.env.WORKERS_PER_ACCOUNT || 4),
-  agentMode: (process.env.AGENT_MODE || "true") !== "false",
+  agentMode: (process.env.AGENT_MODE || "false") === "true",
 };
