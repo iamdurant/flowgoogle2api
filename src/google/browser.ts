@@ -29,6 +29,18 @@ export class BrowserHub {
   private openingWorkers = new Map<string, Promise<Worker>>();
   private maxAccounts = Math.max(1, Number(process.env.MAX_BROWSER_SLOTS || 3));
 
+  private proxyOptions(): { server: string; username?: string; password?: string } | undefined {
+    if (!config.proxyUrl) return undefined;
+    try {
+      const u = new URL(config.proxyUrl);
+      const server = u.protocol + "//" + u.host;
+      if (!u.username) return { server };
+      return { server, username: decodeURIComponent(u.username), password: decodeURIComponent(u.password) };
+    } catch {
+      return { server: config.proxyUrl };
+    }
+  }
+
   private async launch() {
     if (this.browser && this.browser.isConnected()) return this.browser;
     if (config.chromeCdpUrl) {
@@ -46,6 +58,9 @@ export class BrowserHub {
       channel: "chrome",
       headless: config.chromeHeadless,
       args,
+      // The browser must use the same egress as the image downloads: Google's
+      // risk control scores the request IP against the account's session.
+      proxy: this.proxyOptions(),
     });
     this.watchDisconnect(this.browser);
     return this.browser;

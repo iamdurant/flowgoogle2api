@@ -52,12 +52,76 @@ function projectTitle() {
   return mm + "月 " + dd + " 日 - " + hh + ":" + mi;
 }
 
+/**
+ * One long-lived project per account, shared by all worker tabs — this mirrors
+ * the web client, where several tabs generate inside the same open project.
+ * Creating and deleting a project for every API call produced bursts of RPCs
+ * that Google's risk control treated as unusual activity. Media is archived
+ * after the bytes are fetched, so the project does not grow.
+ */
+type PooledProject = { id: string; createdAt: number };
+const POOLED_PROJECT_TTL_MS = 12 * 3600_000;
+const pooledProjects = new Map<string, PooledProject>();
+const pooledCreating = new Map<string, Promise<string>>();
+
+function poolKey(acc: Account) {
+  return acc.id;
+}
+
+async function generationProject(client: FlowClient, acc: Account): Promise<string> {
+  const key = poolKey(acc);
+  const cached = pooledProjects.get(key);
+  if (cached) {
+    if (Date.now() - cached.createdAt < POOLED_PROJECT_TTL_MS) return cached.id;
+    // recycle a stale project so one crashed worker cannot pin it forever
+    pooledProjects.delete(key);
+    client.deleteProject(cached.id).catch(() => {});
+  }
+  const pending = pooledCreating.get(key);
+  if (pending) return pending;
+  const creating = client.createProject(projectTitle()).then((id) => {
+    pooledProjects.set(key, { id, createdAt: Date.now() });
+    return id;
+  });
+  pooledCreating.set(key, creating);
+  try {
+    return await creating;
+  } finally {
+    pooledCreating.delete(key);
+  }
+}
+
+function forgetProject(acc: Account) {
+  pooledProjects.delete(poolKey(acc));
+}
+
+/**
+ * Parallel tabs are fine (the web client does four), but requests that start
+ * in the same millisecond look like automation. Space starts per account.
+ */
+const START_GAP_MS = 400;
+const lastStartAt = new Map<string, number>();
+const paceChain = new Map<string, Promise<void>>();
+
+function paceAccount(accId: string): Promise<void> {
+  const prev = paceChain.get(accId) ?? Promise.resolve();
+  const next = prev.then(async () => {
+    const gap = START_GAP_MS + Math.floor(Math.random() * 400);
+    const wait = (lastStartAt.get(accId) || 0) + gap - Date.now();
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    lastStartAt.set(accId, Date.now());
+  });
+  paceChain.set(accId, next);
+  return next;
+}
+
 async function runOnAccount(acc: Account, workerIndex: number, model: ModelDef, opts: GenerateOptions): Promise<GeneratedImage[]> {
   const session = new Session(acc, workerIndex);
   const client = new FlowClient(session);
-  const projectId = await client.createProject(projectTitle());
+  const projectId = await generationProject(client, acc);
   const n = Math.max(1, Math.min(4, opts.n || 1));
   const aspect = opts.aspect || "16:9";
+  const discard: string[] = [];
   try {
     await client.setImageDefaults(projectId, model, 1, aspect);
 
@@ -67,6 +131,7 @@ async function runOnAccount(acc: Account, workerIndex: number, model: ModelDef, 
         const token = await session.mint("IMAGE_GENERATION");
         refIds.push(await client.uploadImage(projectId, img.data, img.mime, img.filename, token));
       }
+      discard.push(...refIds);
     }
 
     const out: GeneratedImage[] = [];
@@ -114,6 +179,7 @@ async function runOnAccount(acc: Account, workerIndex: number, model: ModelDef, 
         const t2 = await session.mint("IMAGE_GENERATION");
         const buffer = await client.upscale2k(projectId, mediaId, t2);
         out.push({ buffer, contentType: "image/jpeg", mediaId });
+        discard.push(mediaId);
       }
       return out;
     }
@@ -138,18 +204,33 @@ async function runOnAccount(acc: Account, workerIndex: number, model: ModelDef, 
       }
 
       if (opts.upscale2k && gen.mediaId) {
-        const t2 = await session.mint("IMAGE_GENERATION");
-        buffer = await client.upscale2k(projectId, gen.mediaId, t2);
-        contentType = "image/jpeg";
+        // The 2K pass is a second upstream call and is the first RPC Google's
+        // risk control rejects under load. Space it from the generation call
+        // instead of firing back to back; retry once, then keep the 1K image.
+        await new Promise((r) => setTimeout(r, 800 + Math.floor(Math.random() * 400)));
+        for (let attempt = 0; attempt < 2 && buffer; attempt++) {
+          try {
+            const t2 = await session.mint("IMAGE_GENERATION");
+            const hi = await client.upscale2k(projectId, gen.mediaId, t2);
+            buffer = hi;
+            contentType = "image/jpeg";
+            break;
+          } catch (e: any) {
+            console.error("2k upscale failed (attempt " + (attempt + 1) + "): " + String(e?.message || e).slice(0, 200));
+            await new Promise((r) => setTimeout(r, 2000));
+          }
+        }
       }
 
       if (!buffer) throw new Error("generation returned no image");
       out.push({ buffer, contentType, width: gen.width, height: gen.height, mediaId: gen.mediaId });
+      if (gen.mediaId) discard.push(gen.mediaId);
     }
     return out;
   } finally {
-    // best effort cleanup: removes the project, its images and conversations
-    await client.deleteProject(projectId).catch(() => {});
+    // The project is reused; only the media produced (or uploaded) by this
+    // request is archived so it disappears from the account's project grid.
+    for (const id of discard) await client.archiveMedia(projectId, id).catch(() => {});
   }
 }
 
@@ -195,6 +276,7 @@ async function runOnce(opts: GenerateOptions): Promise<GeneratedImage[]> {
     }
     tried.add(acc.id);
     try {
+      await paceAccount(acc.id);
       const images = await runOnAccount(acc, workerIndex, model, opts);
       accountPool.markAuthFailed(acc.id, false);
       return images;
@@ -216,6 +298,8 @@ async function runOnce(opts: GenerateOptions): Promise<GeneratedImage[]> {
         accountPool.markAuthFailed(acc.id, true);
         continue;
       }
+      // A pooled project can disappear (deleted elsewhere); rebuild on next try.
+      if (/project/i.test(msg)) forgetProject(acc);
       throw e;
     } finally {
       accountPool.release(acc.id);
