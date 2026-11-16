@@ -1,15 +1,20 @@
 services:
   app:
-    build: ./docker/app
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+    image: flowgoogle2api:latest
     restart: unless-stopped
-    shm_size: "1gb"          # Chrome needs a bigger /dev/shm
+    shm_size: "512mb"        # Chrome keeps its IPC buffers here
     environment:
       AUTH_KEY: ${AUTH_KEY:-change-me}
       FLOW_PROXY: ${FLOW_PROXY:-}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
       PORT: "3000"
       MAX_CONCURRENCY: ${MAX_CONCURRENCY:-4}
       WORKERS_PER_ACCOUNT: ${WORKERS_PER_ACCOUNT:-2}
+      IMAGE_TTL_MS: ${IMAGE_TTL_MS:-3600000}
     volumes:
       - ./data:/app/data     # accounts.json + generated images
     ports:
-      - "3000:3000"
+      - "${HOST_PORT:-3000}:3000"

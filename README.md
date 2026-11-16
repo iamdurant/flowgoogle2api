@@ -107,7 +107,7 @@ cp .env.example .env
 AUTH_KEY=xxx docker compose up -d --build
 ```
 
-- 镜像内安装 Chrome，以 headless 方式由服务拉起（`--no-sandbox`，`shm_size: 1gb`）
+- 镜像内安装 Chrome，以 headless 方式由服务拉起（`--no-sandbox`，`shm_size: 512mb`）
 - 内存参考：Chrome 主进程约 290MB + 渲染进程约 250MB，每多一个账号约 +30–60MB
 - 账号 cookie 失效时在本地重新 `npm run login` 并同步 `accounts.json` 即可
 
