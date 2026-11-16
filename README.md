@@ -57,7 +57,7 @@ curl http://127.0.0.1:3000/v1/images/generations \
 | `n` | 1–4，多张时并发生成 |
 | `size` | 如 `1024x1536`，按比例就近映射到 5 档 |
 | `aspect_ratio` | `1:1` / `4:3` / `3:4` / `16:9` / `9:16`，优先于 size |
-| `quality` | `2k`（默认）/ `1k` |
+| `quality` | `2k`（默认）/ `1k`；当前 agent 通道统一输出 2K，`1k` 不降级 |
 | `response_format` | `url`（默认，图片托管在本服务）/ `b64_json` |
 
 ### POST /v1/images/edits
