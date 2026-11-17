@@ -202,7 +202,7 @@ export class BrowserHub {
       const sid = html.match(/FdrFJe["']?\s*:\s*\\?"(-?\d+)/)?.[1];
       const bl = html.match(/cfb2h["']?\s*:\s*\\?"([^"\\]+)/)?.[1];
       if (!at || !sid || !bl) {
-        throw new Error("AUTH_REQUIRED: account " + account.id + " is logged out (no SNlM0e); re-run the login script for this account");
+        throw new Error("AUTH_REQUIRED: account " + account.id + " is logged out (no SNlM0e); re-import its cookies via the /admin page");
       }
       w.boot = { at, sid, bl, fetchedAt: Date.now() };
       return w.boot;
@@ -413,6 +413,8 @@ export class BrowserHub {
     this.slots.delete(accountId);
     accountPool.resetRamp(accountId);
     for (const w of slot.workers) await w.page.close().catch(() => {});
+    // Drop the context too: a replaced cookie jar must not keep living in it.
+    await slot.context.close().catch(() => {});
   }
 
   async close() {

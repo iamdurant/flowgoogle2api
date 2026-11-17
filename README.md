@@ -30,10 +30,11 @@ flow.google.com  (batchexecute RPC)
 
 ```bash
 npm install
-npm run login            # 普通 Chrome 窗口登录 Google，回车保存到 data/accounts.json
 cp .env.example .env     # 填 AUTH_KEY、FLOW_PROXY
 npm start
 ```
+
+账号不用本项目管理：在已登录 flow.google.com 的 Chrome 里复制 Cookie（Network → 请求头，另从 accounts.google.com 补 `LSID`），打开 `/admin` 管理页粘贴导入即可。
 
 ```bash
 curl http://127.0.0.1:3000/v1/images/generations \
@@ -76,7 +77,7 @@ multipart：`image`（可重复，最多 4 张）+ `prompt` + 上表其余字段
 
 ## 多账号
 
-`npm run login <id>` 可重复执行，账号写入 `data/accounts.json`（每个账号一份 cookie，包含 `flow.google.com` 域的 `OSID`）。
+账号在 `/admin` 管理页添加 / 删除 / 停用，即时生效无需重启（每个账号一份 cookie，包含 `flow.google.com` 域的 `OSID`）。
 
 运行时按「在途最少」选账号，失败处理：
 
@@ -109,7 +110,7 @@ AUTH_KEY=xxx docker compose up -d --build
 
 - 镜像内安装 Chrome，以 headless 方式由服务拉起（`--no-sandbox`，`shm_size: 512mb`）
 - 内存参考：Chrome 主进程约 290MB + 渲染进程约 250MB，每多一个账号约 +30–60MB
-- 账号 cookie 失效时在本地重新 `npm run login` 并同步 `accounts.json` 即可
+- 账号 cookie 失效时在 `/admin` 管理页重新导入一份新 Cookie 即可
 
 ## 配置
 
@@ -127,7 +128,7 @@ AUTH_KEY=xxx docker compose up -d --build
 
 | 现象 | 处理 |
 |---|---|
-| `AUTH_REQUIRED` / 502 | 账号 cookie 失效，重新 `npm run login` |
+| `AUTH_REQUIRED` / 502 | 账号 cookie 失效，在 `/admin` 管理页重新导入 |
 | `[8, ... PER_MODEL_DAILY_QUOTA_REACHED]` | 该账号该模型当日额度用尽，换模型或加账号 |
 | `429 server busy` | 并发打满，调大 `MAX_CONCURRENCY` 或加账号 |
 | 图片 404 | 托管图片已过期，调大 `IMAGE_TTL_MS` 或改用 `b64_json` |
