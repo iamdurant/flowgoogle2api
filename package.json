@@ -7,8 +7,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
-    "typecheck": "tsc --noEmit",
-    "login": "node scripts/login.mjs"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@fastify/multipart": "^9.0.1",

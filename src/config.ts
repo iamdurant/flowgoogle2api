@@ -3,6 +3,8 @@ export const config = {
   host: process.env.HOST || "0.0.0.0",
   authKey: process.env.AUTH_KEY || "",
   accountsFile: process.env.ACCOUNTS_FILE || "data/accounts.json",
+  statsFile: process.env.STATS_FILE || "data/stats.json",
+  logsFile: process.env.LOGS_FILE || "data/logs.jsonl",
   publicBaseUrl: process.env.PUBLIC_BASE_URL || "",
   proxyUrl: process.env.FLOW_PROXY || process.env.HTTPS_PROXY || process.env.HTTP_PROXY || "",
   defaultModel: process.env.DEFAULT_MODEL || "nano-banana-pro",

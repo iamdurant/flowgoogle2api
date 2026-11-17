@@ -14,6 +14,7 @@ export type GeneratedImage = {
   width?: number;
   height?: number;
   mediaId?: string | null;
+  account?: string;
 };
 
 export type GenerateOptions = {
@@ -178,7 +179,7 @@ async function runOnAccount(acc: Account, workerIndex: number, model: ModelDef, 
 
         const t2 = await session.mint("IMAGE_GENERATION");
         const buffer = await client.upscale2k(projectId, mediaId, t2);
-        out.push({ buffer, contentType: "image/jpeg", mediaId });
+        out.push({ buffer, contentType: "image/jpeg", mediaId, account: acc.id });
         discard.push(mediaId);
       }
       return out;
@@ -223,7 +224,7 @@ async function runOnAccount(acc: Account, workerIndex: number, model: ModelDef, 
       }
 
       if (!buffer) throw new Error("generation returned no image");
-      out.push({ buffer, contentType, width: gen.width, height: gen.height, mediaId: gen.mediaId });
+      out.push({ buffer, contentType, width: gen.width, height: gen.height, mediaId: gen.mediaId, account: acc.id });
       if (gen.mediaId) discard.push(gen.mediaId);
     }
     return out;
@@ -290,9 +291,12 @@ async function runOnce(opts: GenerateOptions): Promise<GeneratedImage[]> {
       const images = await withTimeout(runOnAccount(acc, workerIndex, model, opts), config.generateTimeoutMs + 30_000);
       accountPool.markAuthFailed(acc.id, false);
       accountPool.markRampWarm(acc.id, workerIndex);
+      accountPool.markResult(acc.id, true);
       return images;
     } catch (e) {
       lastErr = e;
+      (e as any).account = acc.id;
+      accountPool.markResult(acc.id, false, String((e as Error)?.message || e));
       if (e instanceof RpcError) {
         const code = e.code;
         if (/QUOTA/.test(code)) {

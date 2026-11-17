@@ -4,6 +4,8 @@ dist/
 
 # runtime data (cookies, generated images, login profiles)
 data/accounts.json
+data/stats.json
+data/logs.jsonl
 data/images/
 data/profiles/
 data/*.local

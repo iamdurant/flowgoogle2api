@@ -1,0 +1,703 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>flowgoogle2api · 控制台</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230e1014'/%3E%3Cpath d='M10 24V8h12M10 16h9' stroke='%234f8cff' stroke-width='3' stroke-linecap='round' fill='none'/%3E%3C/svg%3E">
+<script>
+(function () {
+  var saved = localStorage.getItem("flowTheme");
+  var dark = saved ? saved === "dark" : !window.matchMedia("(prefers-color-scheme: light)").matches;
+  document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+})();
+</script>
+<style>
+  :root[data-theme="dark"] {
+    --bg: #0e1014; --panel: #14171d; --panel2: #181c24; --line: #232833;
+    --fg: #e6e8ee; --muted: #8a93a3; --accent: #4f8cff; --accent-fg: #ffffff;
+    --ok: #46c08a; --warn: #d8a13a; --bad: #e2687a; --overlay: rgba(4, 6, 10, .62);
+    --shadow: 0 18px 50px rgba(0,0,0,.45);
+  }
+  :root[data-theme="light"] {
+    --bg: #f6f7f9; --panel: #ffffff; --panel2: #f1f3f7; --line: #e2e6ed;
+    --fg: #191c22; --muted: #667085; --accent: #2563eb; --accent-fg: #ffffff;
+    --ok: #12805c; --warn: #9a6a15; --bad: #bf3b52; --overlay: rgba(17, 24, 39, .38);
+    --shadow: 0 18px 45px rgba(15, 23, 42, .16);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  input, textarea { font: inherit; color: inherit; background: var(--panel2); border: 1px solid var(--line); border-radius: 7px; padding: 9px 11px; width: 100%; }
+  input:focus, textarea:focus, button:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 1px; }
+  textarea { min-height: 104px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.5; }
+  input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
+
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 24px 28px 64px; }
+  .top { display: flex; align-items: center; gap: 22px; margin-bottom: 24px; }
+  .brand { display: flex; align-items: center; gap: 9px; white-space: nowrap; }
+  .brand svg { width: 20px; height: 20px; color: var(--accent); }
+  .brand h1 { margin: 0; font-size: 14px; font-weight: 600; letter-spacing: -.01em; }
+  .brand .tag { color: var(--muted); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; }
+  .nav { display: flex; gap: 2px; margin-right: auto; }
+  .nav-item { padding: 6px 11px; border-radius: 7px; color: var(--muted); font-size: 13px; }
+  .nav-item:hover { color: var(--fg); background: var(--panel2); }
+  .nav-item.active { color: var(--fg); background: var(--panel2); }
+  .tools { display: flex; align-items: center; gap: 6px; }
+  .icon-btn { width: 32px; height: 32px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); }
+  .icon-btn:hover { background: var(--panel2); color: var(--fg); }
+  .icon-btn svg { width: 16px; height: 16px; }
+  .text-btn { padding: 6px 10px; border-radius: 7px; color: var(--muted); font-size: 13px; }
+  .text-btn:hover { background: var(--panel2); color: var(--fg); }
+
+  .section-head { display: flex; align-items: center; justify-content: space-between; margin: 18px 0 10px; }
+  .section-head h2 { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 7px; font-size: 13px; border: 1px solid var(--line); background: var(--panel); }
+  .btn:hover { background: var(--panel2); }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+  .btn.primary:hover { filter: brightness(1.06); }
+  .btn svg { width: 14px; height: 14px; }
+
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; padding: 10px 14px; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); }
+  td { padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  tr:last-child td { border-bottom: 0; }
+  .num { font-variant-numeric: tabular-nums; }
+  .status { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+  .dot.ok { background: var(--ok); } .dot.bad { background: var(--bad); } .dot.warn { background: var(--warn); } .dot.off { background: var(--muted); }
+  .ok-text { color: var(--ok); } .bad-text { color: var(--bad); }
+  .muted { color: var(--muted); }
+  .err { color: var(--bad); font-size: 12px; max-width: 320px; word-break: break-word; }
+  .clip { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .actions { display: flex; gap: 2px; justify-content: flex-end; }
+  .actions .text-btn { padding: 5px 8px; }
+  .actions .danger:hover { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); }
+  .empty { padding: 40px 14px; text-align: center; color: var(--muted); }
+  .pager { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; font-size: 12px; }
+  .placeholder { padding: 56px 24px; text-align: center; color: var(--muted); }
+
+  .overlay { position: fixed; inset: 0; background: var(--overlay); display: flex; align-items: center; justify-content: center; padding: 24px; z-index: 40; }
+  .modal { width: 580px; max-width: 100%; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); }
+  .modal.wide { width: 640px; }
+  .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 15px 18px; border-bottom: 1px solid var(--line); }
+  .modal-head h3 { margin: 0; font-size: 14px; font-weight: 600; }
+  .modal-body { padding: 18px; display: grid; gap: 14px; }
+  .modal-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 13px 18px; border-top: 1px solid var(--line); }
+  .field label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .kv { display: grid; grid-template-columns: 84px 1fr; gap: 8px 14px; font-size: 13px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; word-break: break-word; }
+  .kv .full { margin-top: 4px; max-height: 160px; overflow: auto; background: var(--panel2); border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px; }
+
+  .help-wrap { position: relative; display: inline-flex; align-items: center; }
+  .help { width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--line); color: var(--muted); font-size: 11px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; }
+  .help:hover { color: var(--fg); border-color: var(--muted); }
+  .pop { position: absolute; left: -6px; top: 24px; width: 360px; background: var(--panel); border: 1px solid var(--line); border-radius: 9px; box-shadow: var(--shadow); padding: 12px 14px; text-align: left; z-index: 10; display: none; }
+  .help-wrap:hover .pop, .help-wrap:focus-within .pop, .pop:hover { display: block; }
+  .pop ol { margin: 0; padding-left: 18px; color: var(--fg); font-size: 12px; line-height: 1.7; }
+  .pop li { margin-bottom: 6px; }
+  .pop code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; font-size: 11px; }
+
+  #toasts { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 60; pointer-events: none; }
+  .toast { min-width: 220px; max-width: 440px; padding: 9px 14px; border-radius: 8px; background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); font-size: 13px; text-align: center; animation: toastIn .2s ease-out; }
+  .toast.ok { border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); }
+  .toast.bad { border-color: color-mix(in srgb, var(--bad) 50%, var(--line)); }
+  .toast.out { animation: toastOut .45s ease-in forwards; }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(-14px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes toastOut { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-10px); } }
+
+  #boot { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--bg); color: var(--muted); font-size: 13px; z-index: 50; }
+  #login { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--bg); z-index: 45; }
+  .login-card { width: 380px; text-align: center; }
+  .login-rule { width: 26px; height: 2px; background: var(--line); margin: 0 auto 20px; }
+  .login-brand { font-size: 44px; letter-spacing: -.045em; line-height: 1.04; margin-bottom: 8px; white-space: nowrap; }
+  .lb-flow { font-weight: 300; color: var(--muted); }
+  .lb-google { font-weight: 650; color: var(--fg); }
+  .lb-rest { font-weight: 650; color: var(--accent); }
+  .login-sub { margin: 0 0 28px; color: var(--muted); font-size: 10px; letter-spacing: .32em; text-transform: uppercase; }
+  .login-card input { text-align: center; letter-spacing: .08em; }
+  .login-card .btn { width: 100%; margin-top: 12px; justify-content: center; }
+  [hidden] { display: none !important; }
+  @media (max-width: 760px) {
+    .wrap { padding: 18px 14px 48px; }
+    .top { flex-wrap: wrap; gap: 10px; }
+    .nav { order: 3; width: 100%; }
+    th:nth-child(3), td:nth-child(3), th:nth-child(6), td:nth-child(6) { display: none; }
+    .login-brand { font-size: 34px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="boot"><span>加载中…</span></div>
+
+<div id="login" hidden>
+  <div class="login-card">
+    <div class="login-rule"></div>
+    <div class="login-brand"><span class="lb-flow">flow</span><span class="lb-google">google</span><span class="lb-rest">2api</span></div>
+    <p class="login-sub">account console</p>
+    <input id="key" type="password" placeholder="AUTH_KEY" autocomplete="current-password">
+    <button class="btn primary" id="loginBtn">进入</button>
+  </div>
+</div>
+
+<div id="app" class="wrap" hidden>
+  <div class="top">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M7 19V5h9M7 12h7"/></svg>
+      <h1>flowgoogle2api</h1>
+      <span class="tag">console</span>
+    </div>
+    <nav class="nav">
+      <button class="nav-item active" data-view="accounts">号池管理</button>
+      <button class="nav-item" data-view="logs">日志管理</button>
+      <button class="nav-item" data-view="settings">设置</button>
+    </nav>
+    <div class="tools">
+      <button class="icon-btn" id="themeBtn" title="切换主题" aria-label="切换主题"></button>
+      <button class="text-btn" id="logout">退出</button>
+    </div>
+  </div>
+
+  <section class="view" data-view="accounts">
+    <div class="section-head">
+      <h2>账号</h2>
+      <div class="row">
+        <button class="btn" id="accRefresh">刷新</button>
+        <button class="btn" id="accSelectAll">全选</button>
+        <button class="btn" id="accDeleteSel" disabled>删除所选</button>
+        <button class="btn primary" id="openModal">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 3v10M3 8h10"/></svg>
+          新增 / 更新账号
+        </button>
+      </div>
+    </div>
+    <div class="panel">
+      <table>
+        <thead><tr>
+          <th style="width:40px"><input type="checkbox" id="accAllCheck" aria-label="全选"></th>
+          <th>ID</th><th>状态</th><th>Cookie</th><th>成功 / 失败</th><th>最近错误</th><th>在途</th><th></th>
+        </tr></thead>
+        <tbody id="rows"><tr><td colspan="8" class="empty">加载中…</td></tr></tbody>
+      </table>
+    </div>
+    <div class="pager">
+      <span class="muted" id="accMeta">第 1/1 页，共 0 条</span>
+      <div class="row">
+        <button class="btn" id="accPrev">上一页</button>
+        <button class="btn" id="accNext">下一页</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="view" data-view="logs" hidden>
+    <div class="section-head">
+      <h2>请求日志</h2>
+      <div class="row">
+        <button class="btn" id="logRefresh">刷新</button>
+        <button class="btn" id="logSelectAll">全选</button>
+        <button class="btn" id="logDeleteSel" disabled>删除所选</button>
+      </div>
+    </div>
+    <div class="panel">
+      <table>
+        <thead><tr>
+          <th style="width:40px"><input type="checkbox" id="logAllCheck" aria-label="全选"></th>
+          <th>时间</th><th>耗时</th><th>状态</th><th>模型 / 比例</th><th>提示词</th><th></th>
+        </tr></thead>
+        <tbody id="logRows"><tr><td colspan="7" class="empty">加载中…</td></tr></tbody>
+      </table>
+    </div>
+    <div class="pager">
+      <span class="muted" id="logMeta">第 1/1 页，共 0 条</span>
+      <div class="row">
+        <button class="btn" id="logPrev">上一页</button>
+        <button class="btn" id="logNext">下一页</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="view" data-view="settings" hidden>
+    <div class="section-head"><h2>设置</h2></div>
+    <div class="panel placeholder">设置项还没想好，先留个位置。</div>
+  </section>
+</div>
+
+<div class="overlay" id="modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-head">
+      <h3 id="modalTitle">新增 / 更新账号</h3>
+      <button class="icon-btn" id="closeModal" aria-label="关闭">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label for="accId">账号 ID</label>
+        <input id="accId" placeholder="例如 main" style="max-width:240px">
+      </div>
+      <div class="field">
+        <label for="cookie">
+          Cookie
+          <span class="help-wrap">
+            <button class="help" type="button" aria-label="如何获取 Cookie">?</button>
+            <div class="pop">
+              <ol>
+                <li>打开 <code>flow.google.com</code>，F12 → Network → 刷新 → 点任意一个 <code>flow.google.com</code> 请求 → Request Headers → 复制 <code>Cookie</code> 整行。</li>
+                <li>Application → Cookies → 选 <code>https://accounts.google.com</code> → 复制 <code>LSID</code> 的值，追加到刚才那行末尾：<code>; LSID=...</code></li>
+                <li>把合并后的整行粘贴到下面，保存。</li>
+              </ol>
+            </div>
+          </span>
+        </label>
+        <textarea id="cookie" placeholder="SID=...; SAPISID=...; OSID=...; __Secure-OSID=...; LSID=..." spellcheck="false"></textarea>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="cancelModal">取消</button>
+      <button class="btn primary" id="saveAccount">保存账号</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="logModal" hidden>
+  <div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="logTitle">
+    <div class="modal-head">
+      <h3 id="logTitle">请求详情</h3>
+      <button class="icon-btn" id="closeLogModal" aria-label="关闭">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="logDetail"></div>
+  </div>
+</div>
+
+<div id="toasts"></div>
+
+<script>
+var $ = function (id) { return document.getElementById(id); };
+var key = "";
+var timer = null;
+
+function applyThemeIcon() {
+  var dark = document.documentElement.getAttribute("data-theme") === "dark";
+  $("themeBtn").innerHTML = dark
+    ? '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="3.2"/><path d="M8 1.6v1.4M8 13v1.4M1.6 8H3M13 8h1.4M3.5 3.5l1 1M11.5 11.5l1 1M12.5 3.5l-1 1M4.5 11.5l-1 1"/></svg>'
+    : '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.2 9.6A5.6 5.6 0 0 1 6.4 2.8 5.6 5.6 0 1 0 13.2 9.6Z"/></svg>';
+}
+
+$("themeBtn").onclick = function () {
+  var next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  localStorage.setItem("flowTheme", next);
+  applyThemeIcon();
+};
+
+function toast(msg, type) {
+  var el = document.createElement("div");
+  el.className = "toast " + (type || "");
+  el.textContent = msg;
+  $("toasts").appendChild(el);
+  setTimeout(function () { el.classList.add("out"); }, 2600);
+  setTimeout(function () { el.remove(); }, 3200);
+}
+
+function api(path, options) {
+  options = options || {};
+  var headers = { authorization: "Bearer " + key };
+  if (options.body !== undefined) headers["content-type"] = "application/json";
+  return fetch(path, { method: options.method, body: options.body, headers: headers }).then(function (res) {
+    return res.json().catch(function () { return {}; }).then(function (body) {
+      if (res.status === 401) { showLogin("密钥已失效，请重新输入", "bad"); throw new Error("unauthorized"); }
+      if (!res.ok) throw new Error((body.error && body.error.message) || body.error || ("HTTP " + res.status));
+      return body;
+    });
+  });
+}
+
+function showLogin(msg, kind) {
+  $("boot").hidden = true;
+  $("app").hidden = true;
+  $("login").hidden = false;
+  if (msg) toast(msg, kind || "bad");
+  $("key").value = "";
+  $("key").focus();
+  key = "";
+  localStorage.removeItem("flowAdminKey");
+  if (timer) { clearInterval(timer); timer = null; }
+}
+
+function showApp() {
+  $("boot").hidden = true;
+  $("login").hidden = true;
+  $("app").hidden = false;
+  setView("accounts");
+  refresh();
+  if (timer) clearInterval(timer);
+  timer = setInterval(function () {
+    if (!$("app").hidden && document.querySelector('.nav-item.active').getAttribute("data-view") === "accounts") refresh();
+  }, 5000);
+}
+
+function login() {
+  var candidate = $("key").value.trim();
+  if (!candidate) { toast("请输入密钥", "bad"); return; }
+  key = candidate;
+  $("loginBtn").disabled = true;
+  toast("校验中…");
+  api("/admin/api/accounts").then(function () {
+    localStorage.setItem("flowAdminKey", key);
+    showApp();
+  }).catch(function (e) {
+    if (e.message !== "unauthorized") toast(e.message, "bad");
+  }).then(function () { $("loginBtn").disabled = false; });
+}
+
+function fmt(ts) {
+  if (!ts) return "—";
+  return new Date(ts).toLocaleString("zh-CN", { hour12: false });
+}
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+  });
+}
+
+function statusOf(a) {
+  if (a.disabled) return { cls: "off", text: "已停用" };
+  if (a.authFailed) return { cls: "bad", text: "登录失效" };
+  if (Object.keys(a.cooldownUntil || {}).length) return { cls: "warn", text: "冷却中" };
+  return { cls: "ok", text: "正常" };
+}
+
+/* ---------- accounts ---------- */
+
+var accState = { page: 1, size: 10, items: [], selected: {} };
+
+function accPageCount() {
+  return Math.max(1, Math.ceil(accState.items.length / accState.size));
+}
+
+function selectedAccIds() {
+  return Object.keys(accState.selected);
+}
+
+function syncAccSelection() {
+  var ids = selectedAccIds();
+  var start = (accState.page - 1) * accState.size;
+  var pageLen = Math.max(0, Math.min(accState.size, accState.items.length - start));
+  var all = pageLen > 0 && ids.length === pageLen;
+  $("accAllCheck").checked = all;
+  $("accSelectAll").textContent = all ? "取消选择" : "全选";
+  $("accDeleteSel").disabled = ids.length === 0;
+  $("accDeleteSel").textContent = ids.length ? "删除所选 (" + ids.length + ")" : "删除所选";
+}
+
+function renderAccounts() {
+  var pages = accPageCount();
+  if (accState.page > pages) accState.page = pages;
+  var start = (accState.page - 1) * accState.size;
+  var pageItems = accState.items.slice(start, start + accState.size);
+
+  if (!accState.items.length) {
+    $("rows").innerHTML = '<tr><td colspan="8" class="empty">还没有账号</td></tr>';
+  } else {
+    var html = "";
+    pageItems.forEach(function (a) {
+      var s = statusOf(a);
+      html += '<tr>'
+        + '<td><input type="checkbox" data-accpick="' + esc(a.id) + '"' + (accState.selected[a.id] ? " checked" : "") + '></td>'
+        + '<td class="mono">' + esc(a.id) + '</td>'
+        + '<td><span class="status"><span class="dot ' + s.cls + '"></span>' + s.text + '</span></td>'
+        + '<td class="num">' + a.cookies + '</td>'
+        + '<td class="num"><span class="ok-text">' + a.success + '</span> / <span class="bad-text">' + a.failure + '</span></td>'
+        + '<td><div class="err">' + (a.lastError ? esc(a.lastError) : '<span class="muted">—</span>') + '</div>'
+        + '<div class="muted" style="font-size:11px">成功 ' + fmt(a.lastSuccessAt) + ' · 失败 ' + fmt(a.lastFailureAt) + '</div></td>'
+        + '<td class="num">' + a.inflight + '</td>'
+        + '<td><div class="actions">'
+        + '<button class="text-btn" data-toggle="' + esc(a.id) + '" data-disabled="' + (a.disabled ? "0" : "1") + '">' + (a.disabled ? "启用" : "停用") + '</button>'
+        + '<button class="text-btn danger" data-del="' + esc(a.id) + '">删除</button>'
+        + '</div></td></tr>';
+    });
+    $("rows").innerHTML = html;
+
+    Array.prototype.forEach.call(document.querySelectorAll("[data-accpick]"), function (b) {
+      b.onchange = function () {
+        var id = b.getAttribute("data-accpick");
+        if (b.checked) accState.selected[id] = true; else delete accState.selected[id];
+        syncAccSelection();
+      };
+    });
+    Array.prototype.forEach.call(document.querySelectorAll("[data-del]"), function (b) {
+      b.onclick = function () {
+        var id = b.getAttribute("data-del");
+        deleteAccounts([id], "删除账号 " + id + "？");
+      };
+    });
+    Array.prototype.forEach.call(document.querySelectorAll("[data-toggle]"), function (b) {
+      b.onclick = function () {
+        var id = b.getAttribute("data-toggle");
+        var disabled = b.getAttribute("data-disabled") === "1";
+        api("/admin/api/accounts/" + encodeURIComponent(id), { method: "PATCH", body: JSON.stringify({ disabled: disabled }) })
+          .then(function () { toast((disabled ? "已停用 " : "已启用 ") + id, "ok"); refresh(); })
+          .catch(function (e) { if (e.message !== "unauthorized") toast("操作失败：" + e.message, "bad"); });
+      };
+    });
+  }
+
+  $("accMeta").textContent = "第 " + accState.page + "/" + pages + " 页，共 " + accState.items.length + " 条";
+  $("accPrev").disabled = accState.page <= 1;
+  $("accNext").disabled = accState.page >= pages;
+  syncAccSelection();
+}
+
+function deleteAccounts(ids, question) {
+  if (!ids.length) return;
+  if (!confirm(question)) return;
+  api("/admin/api/accounts", { method: "DELETE", body: JSON.stringify({ ids: ids }) })
+    .then(function (res) { toast("已删除 " + res.removed + " 个账号", "ok"); accState.selected = {}; refresh(); })
+    .catch(function (e) { if (e.message !== "unauthorized") toast("删除失败：" + e.message, "bad"); });
+}
+
+function refresh() {
+  if (!key) return;
+  api("/admin/api/accounts").then(function (res) {
+    accState.items = res.data || [];
+    var pages = accPageCount();
+    if (accState.page > pages) accState.page = pages;
+    Object.keys(accState.selected).forEach(function (id) {
+      var found = false;
+      accState.items.forEach(function (a) { if (a.id === id) found = true; });
+      if (!found) delete accState.selected[id];
+    });
+    renderAccounts();
+  }).catch(function (e) {
+    if (e.message !== "unauthorized") $("rows").innerHTML = '<tr><td colspan="8" class="empty err">' + esc(e.message) + '</td></tr>';
+  });
+}
+
+$("accRefresh").onclick = function () { refresh(); toast("已刷新"); };
+$("accPrev").onclick = function () { if (accState.page > 1) { accState.page--; accState.selected = {}; renderAccounts(); } };
+$("accNext").onclick = function () { if (accState.page < accPageCount()) { accState.page++; accState.selected = {}; renderAccounts(); } };
+$("accAllCheck").onchange = function () {
+  var start = (accState.page - 1) * accState.size;
+  var pageItems = accState.items.slice(start, start + accState.size);
+  if ($("accAllCheck").checked) pageItems.forEach(function (a) { accState.selected[a.id] = true; });
+  else accState.selected = {};
+  renderAccounts();
+};
+$("accSelectAll").onclick = function () {
+  var start = (accState.page - 1) * accState.size;
+  var pageItems = accState.items.slice(start, start + accState.size);
+  if (selectedAccIds().length === pageItems.length) accState.selected = {};
+  else pageItems.forEach(function (a) { accState.selected[a.id] = true; });
+  renderAccounts();
+};
+$("accDeleteSel").onclick = function () { deleteAccounts(selectedAccIds(), "删除所选 " + selectedAccIds().length + " 个账号？"); };
+
+/* ---------- logs ---------- */
+
+var logs = { page: 1, size: 20, pages: 1, total: 0, items: [], selected: {} };
+
+function humansize(n) {
+  if (!n) return "—";
+  if (n < 1024) return n + " B";
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+  return (n / 1024 / 1024).toFixed(2) + " MB";
+}
+
+function loadLogs(page) {
+  api("/admin/api/logs?page=" + (page || 1) + "&size=" + logs.size).then(function (res) {
+    logs.page = res.page; logs.pages = res.pages; logs.total = res.total; logs.items = res.items || [];
+    logs.selected = {};
+    renderLogs();
+  }).catch(function (e) {
+    if (e.message !== "unauthorized") $("logRows").innerHTML = '<tr><td colspan="7" class="empty err">' + esc(e.message) + '</td></tr>';
+  });
+}
+
+function renderLogs() {
+  if (!logs.items.length) {
+    $("logRows").innerHTML = '<tr><td colspan="7" class="empty">还没有日志</td></tr>';
+  } else {
+    var html = "";
+    logs.items.forEach(function (l) {
+      html += '<tr>'
+        + '<td><input type="checkbox" data-pick="' + esc(l.id) + '"' + (logs.selected[l.id] ? " checked" : "") + '></td>'
+        + '<td class="mono" style="font-size:12px">' + fmt(l.at) + '</td>'
+        + '<td class="num">' + (l.ms / 1000).toFixed(1) + 's</td>'
+        + '<td><span class="status"><span class="dot ' + (l.ok ? "ok" : "bad") + '"></span>' + (l.ok ? "成功" : "失败") + '</span></td>'
+        + '<td class="mono" style="font-size:12px">' + esc(l.model) + '<span class="muted"> · ' + esc(l.aspect) + '</span></td>'
+        + '<td><div class="clip" title="' + esc(l.prompt) + '">' + esc(l.prompt) + '</div></td>'
+        + '<td><div class="actions">'
+        + '<button class="text-btn" data-detail="' + esc(l.id) + '">查看详情</button>'
+        + '<button class="text-btn danger" data-logdel="' + esc(l.id) + '">删除</button>'
+        + '</div></td></tr>';
+    });
+    $("logRows").innerHTML = html;
+    Array.prototype.forEach.call(document.querySelectorAll("[data-detail]"), function (b) {
+      b.onclick = function () { showLogDetail(b.getAttribute("data-detail")); };
+    });
+    Array.prototype.forEach.call(document.querySelectorAll("[data-logdel]"), function (b) {
+      b.onclick = function () { deleteLogs([b.getAttribute("data-logdel")], "删除这条日志？"); };
+    });
+    Array.prototype.forEach.call(document.querySelectorAll("[data-pick]"), function (b) {
+      b.onchange = function () {
+        var id = b.getAttribute("data-pick");
+        if (b.checked) logs.selected[id] = true; else delete logs.selected[id];
+        syncSelection();
+      };
+    });
+  }
+  $("logMeta").textContent = "第 " + logs.page + "/" + logs.pages + " 页，共 " + logs.total + " 条";
+  $("logPrev").disabled = logs.page <= 1;
+  $("logNext").disabled = logs.page >= logs.pages;
+  syncSelection();
+}
+
+function selectedIds() {
+  return Object.keys(logs.selected);
+}
+
+function syncSelection() {
+  var ids = selectedIds();
+  var all = logs.items.length > 0 && ids.length === logs.items.length;
+  $("logAllCheck").checked = all;
+  $("logSelectAll").textContent = all ? "取消选择" : "全选";
+  $("logDeleteSel").disabled = ids.length === 0;
+  $("logDeleteSel").textContent = ids.length ? "删除所选 (" + ids.length + ")" : "删除所选";
+}
+
+function deleteLogs(ids, question) {
+  if (!ids.length) return;
+  if (!confirm(question)) return;
+  api("/admin/api/logs", { method: "DELETE", body: JSON.stringify({ ids: ids }) }).then(function (res) {
+    toast("已删除 " + res.removed + " 条日志", "ok");
+    logs.selected = {};
+    loadLogs(logs.page);
+  }).catch(function (e) {
+    if (e.message !== "unauthorized") toast("删除失败：" + e.message, "bad");
+  });
+}
+
+function showLogDetail(id) {
+  var l = null;
+  logs.items.forEach(function (x) { if (x.id === id) l = x; });
+  if (!l) return;
+  $("logDetail").innerHTML = '<dl class="kv">'
+    + '<dt>时间</dt><dd class="mono">' + fmt(l.at) + '</dd>'
+    + '<dt>耗时</dt><dd class="num">' + (l.ms / 1000).toFixed(2) + ' 秒</dd>'
+    + '<dt>类型</dt><dd>' + ({ generate: "生成", edit: "编辑", chat: "对话" }[l.kind] || "生成") + '</dd>'
+    + '<dt>状态</dt><dd>' + (l.ok ? '<span class="ok-text">成功</span>' : '<span class="bad-text">失败</span>') + '</dd>'
+    + '<dt>模型</dt><dd class="mono">' + esc(l.model) + '</dd>'
+    + '<dt>比例</dt><dd class="mono">' + esc(l.aspect) + '</dd>'
+    + '<dt>账号</dt><dd class="mono">' + esc(l.account || "—") + '</dd>'
+    + '<dt>格式</dt><dd class="mono">' + esc(l.format || "—") + '</dd>'
+    + '<dt>大小</dt><dd class="num">' + humansize(l.bytes) + '</dd>'
+    + '<dt>提示词</dt><dd><div class="full">' + esc(l.prompt) + '</div></dd>'
+    + (l.error ? '<dt>错误</dt><dd class="err">' + esc(l.error) + '</dd>' : '')
+    + '</dl>';
+  $("logModal").hidden = false;
+}
+
+/* ---------- view / nav ---------- */
+
+function setView(view) {
+  Array.prototype.forEach.call(document.querySelectorAll(".nav-item"), function (b) {
+    b.classList.toggle("active", b.getAttribute("data-view") === view);
+  });
+  Array.prototype.forEach.call(document.querySelectorAll(".view"), function (s) {
+    s.hidden = s.getAttribute("data-view") !== view;
+  });
+  if (view === "logs") loadLogs(logs.page);
+}
+
+Array.prototype.forEach.call(document.querySelectorAll(".nav-item"), function (b) {
+  b.onclick = function () { setView(b.getAttribute("data-view")); };
+});
+
+$("logRefresh").onclick = function () { loadLogs(logs.page); toast("已刷新"); };
+$("logPrev").onclick = function () { if (logs.page > 1) loadLogs(logs.page - 1); };
+$("logNext").onclick = function () { if (logs.page < logs.pages) loadLogs(logs.page + 1); };
+$("logAllCheck").onchange = function () {
+  logs.selected = {};
+  if ($("logAllCheck").checked) logs.items.forEach(function (l) { logs.selected[l.id] = true; });
+  renderLogs();
+};
+$("logSelectAll").onclick = function () {
+  if (selectedIds().length === logs.items.length) logs.selected = {};
+  else logs.items.forEach(function (l) { logs.selected[l.id] = true; });
+  renderLogs();
+};
+$("logDeleteSel").onclick = function () { deleteLogs(selectedIds(), "删除所选 " + selectedIds().length + " 条日志？"); };
+
+/* ---------- account modal ---------- */
+
+function openModal() {
+  $("modal").hidden = false;
+  setTimeout(function () { $("accId").focus(); }, 0);
+}
+function closeModal() {
+  $("modal").hidden = true;
+  $("cookie").value = "";
+}
+
+$("openModal").onclick = openModal;
+$("closeModal").onclick = closeModal;
+$("cancelModal").onclick = closeModal;
+$("modal").addEventListener("click", function (e) { if (e.target === $("modal")) closeModal(); });
+$("logModal").addEventListener("click", function (e) { if (e.target === $("logModal")) $("logModal").hidden = true; });
+$("closeLogModal").onclick = function () { $("logModal").hidden = true; };
+document.addEventListener("keydown", function (e) {
+  if (e.key !== "Escape") return;
+  if (!$("modal").hidden) closeModal();
+  if (!$("logModal").hidden) $("logModal").hidden = true;
+});
+
+$("saveAccount").onclick = function () {
+  var text = $("cookie").value.trim();
+  var id = $("accId").value.trim();
+  if (!id) { toast("请填写账号 ID", "bad"); return; }
+  if (!text) { toast("请先粘贴 Cookie", "bad"); return; }
+  var body = { id: id };
+  if (text.charAt(0) === "[" || text.charAt(0) === "{") {
+    try { body.cookies = JSON.parse(text); } catch (e) { toast("JSON 解析失败", "bad"); return; }
+  } else {
+    body.cookie = text;
+  }
+  $("saveAccount").disabled = true;
+  api("/admin/api/accounts", { method: "POST", body: JSON.stringify(body) }).then(function () {
+    toast("已保存 " + id, "ok");
+    closeModal();
+    refresh();
+  }).catch(function (e) {
+    if (e.message !== "unauthorized") toast("保存失败：" + e.message, "bad");
+  }).then(function () { $("saveAccount").disabled = false; });
+};
+
+$("loginBtn").onclick = login;
+$("key").addEventListener("keydown", function (e) { if (e.key === "Enter") login(); });
+$("logout").onclick = function () { showLogin("已退出", "ok"); };
+
+applyThemeIcon();
+var saved = localStorage.getItem("flowAdminKey");
+if (saved) {
+  key = saved;
+  api("/admin/api/accounts").then(showApp).catch(function () { showLogin("密钥已失效，请重新输入", "bad"); });
+} else {
+  showLogin("");
+}
+</script>
+</body>
+</html>

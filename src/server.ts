@@ -2,7 +2,7 @@ import Fastify from "fastify";
 import multipart from "@fastify/multipart";
 import fs from "node:fs";
 import { config } from "./config.js";
-import { accountPool } from "./accounts.js";
+import { accountPool, parseCookieHeader, type CookieRecord } from "./accounts.js";
 import { generateImages, gate } from "./generate.js";
 import { MODELS, aspectFromSize } from "./models.js";
 import { saveImage, getImage, publicUrl, sweeper, sweepDisk } from "./store.js";
@@ -11,6 +11,8 @@ import { browserHub } from "./google/browser.js";
 import { downloadImage } from "./flow/client.js";
 import { sniffImage, filenameFor } from "./image.js";
 import { assertPublicUrl } from "./net-guard.js";
+import { verifyCookies } from "./cookie-check.js";
+import { logStore } from "./logs.js";
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL || "info" }, bodyLimit: 30 * 1024 * 1024 });
 
@@ -28,7 +30,8 @@ function auth(req: any) {
 }
 
 app.addHook("onRequest", async (req, reply) => {
-  if (req.url === "/" || req.url.startsWith("/images/") || req.url === "/health") return;
+  // The management page is static; its API calls carry the key themselves.
+  if (req.url === "/" || req.url.startsWith("/images/") || req.url === "/health" || req.url === "/admin") return;
   try {
     auth(req);
   } catch (e: any) {
@@ -70,16 +73,45 @@ app.post("/v1/images/generations", async (req, reply) => {
   const prompt = String(body.prompt || "").trim();
   if (!prompt) return reply.code(400).send({ error: { message: "prompt is required", type: "invalid_request_error" } });
 
+  const started = Date.now();
+  const aspect = aspectOf(body.size, body.aspect_ratio);
+  const format = body.response_format === "b64_json" ? "b64_json" : "url";
+  const modelName = String(body.model || config.defaultModel);
+
   try {
     const images = await generateImages({
       prompt,
       modelName: body.model,
       n: Number(body.n || 1),
-      aspect: aspectOf(body.size, body.aspect_ratio),
+      aspect,
       upscale2k: body.quality === "2k" ? true : body.quality === "1k" ? false : config.default2k,
     });
-    return toResponse(images, prompt, body.response_format === "b64_json" ? "b64_json" : "url");
+    logStore.add({
+      at: started,
+      ms: Date.now() - started,
+      ok: true,
+      model: modelName,
+      aspect,
+      prompt: prompt,
+      kind: "generate",
+      account: images[0]?.account,
+      format,
+      bytes: images.reduce((sum, img) => sum + img.buffer.length, 0),
+    });
+    return toResponse(images, prompt, format);
   } catch (e: any) {
+    logStore.add({
+      at: started,
+      ms: Date.now() - started,
+      ok: false,
+      model: modelName,
+      aspect,
+      prompt: prompt,
+      kind: "generate",
+      error: String(e?.message || e).slice(0, 300),
+      account: e?.account,
+      format,
+    });
     req.log.error({ err: String(e?.stack || e?.message || e) }, "generation failed");
     const busy = /server busy/.test(String(e?.message || ""));
     const quota = /QUOTA/.test(String(e?.code || "") + String(e?.message || ""));
@@ -159,17 +191,46 @@ app.post("/v1/images/edits", async (req, reply) => {
   if (!images.length) return reply.code(400).send({ error: { message: "image is required", type: "invalid_request_error" } });
   if (!prompt.trim()) return reply.code(400).send({ error: { message: "prompt is required", type: "invalid_request_error" } });
 
+  const started = Date.now();
+  const editAspect = aspectOf(size, aspect);
+  const editFormat = format === "b64_json" ? "b64_json" : "url";
+  const editModel = String(model || config.defaultModel);
+
   try {
     const out = await generateImages({
       prompt: prompt.trim(),
       modelName: model,
       n,
-      aspect: aspectOf(size, aspect),
+      aspect: editAspect,
       upscale2k: config.default2k,
       images,
     });
-    return toResponse(out, prompt, format === "b64_json" ? "b64_json" : "url");
+    logStore.add({
+      at: started,
+      ms: Date.now() - started,
+      ok: true,
+      model: editModel,
+      aspect: editAspect,
+      prompt: prompt.trim(),
+      kind: "edit",
+      account: out[0]?.account,
+      format: editFormat,
+      bytes: out.reduce((sum, img) => sum + img.buffer.length, 0),
+    });
+    return toResponse(out, prompt, editFormat);
   } catch (e: any) {
+    logStore.add({
+      at: started,
+      ms: Date.now() - started,
+      ok: false,
+      model: editModel,
+      aspect: editAspect,
+      prompt: prompt.trim(),
+      kind: "edit",
+      error: String(e?.message || e).slice(0, 300),
+      account: e?.account,
+      format: editFormat,
+    });
     req.log.error({ err: String(e?.stack || e?.message || e) }, "upstream call failed");
     const busy = /server busy/.test(String(e?.message || ""));
     const quota = /QUOTA/.test(String(e?.code || "") + String(e?.message || ""));
@@ -196,13 +257,29 @@ app.post("/v1/chat/completions", async (req, reply) => {
   prompt = String(prompt || body.prompt || "").trim();
   if (!prompt) return reply.code(400).send({ error: { message: "prompt is required", type: "invalid_request_error" } });
 
+  const started = Date.now();
+  const chatAspect = config.defaultAspect;
+  const chatModel = String(body.model || config.defaultModel);
+
   try {
     const images = await generateImages({
       prompt,
       modelName: body.model,
       n: Number(body.n || 1),
-      aspect: config.defaultAspect,
+      aspect: chatAspect,
       upscale2k: config.default2k,
+    });
+    logStore.add({
+      at: started,
+      ms: Date.now() - started,
+      ok: true,
+      model: chatModel,
+      aspect: chatAspect,
+      prompt: prompt,
+      kind: "chat",
+      account: images[0]?.account,
+      format: "url",
+      bytes: images.reduce((sum, img) => sum + img.buffer.length, 0),
     });
     const urls = images.map((img) => {
       const saved = saveImage(img.buffer, img.contentType);
@@ -245,6 +322,18 @@ app.post("/v1/chat/completions", async (req, reply) => {
       usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
     };
   } catch (e: any) {
+    logStore.add({
+      at: started,
+      ms: Date.now() - started,
+      ok: false,
+      model: chatModel,
+      aspect: chatAspect,
+      prompt: prompt,
+      kind: "chat",
+      error: String(e?.message || e).slice(0, 300),
+      account: e?.account,
+      format: "url",
+    });
     req.log.error({ err: String(e?.stack || e?.message || e) }, "upstream call failed");
     const busy = /server busy/.test(String(e?.message || ""));
     const quota = /QUOTA/.test(String(e?.code || "") + String(e?.message || ""));
@@ -276,10 +365,88 @@ app.get("/images/:name", async (req, reply) => {
 
 app.get("/v1/accounts", async () => ({ data: accountPool.snapshot() }));
 
+const adminFile = new URL("./web/admin.html", import.meta.url);
+
+// Read per request so the page can be updated without restarting the service.
+app.get("/admin", async (req, reply) => reply.type("text/html; charset=utf-8").send(fs.readFileSync(adminFile, "utf8")));
+
+app.get("/admin/api/accounts", async () => ({ data: accountPool.snapshot() }));
+
+app.post("/admin/api/accounts", async (req, reply) => {
+  const body = (req.body || {}) as any;
+  const id = String(body.id || "").trim() || "main";
+  let cookies: CookieRecord[] = [];
+  if (Array.isArray(body.cookies)) {
+    cookies = body.cookies
+      .filter((c: any) => c && typeof c.name === "string" && typeof c.value === "string")
+      .map((c: any) => ({ name: c.name, value: c.value, domain: String(c.domain || ".google.com"), path: c.path || "/" }));
+  } else if (typeof body.cookie === "string") {
+    cookies = parseCookieHeader(body.cookie);
+  }
+  if (!cookies.length) return reply.code(400).send({ error: { message: "cookie is empty" } });
+
+  const verified = await verifyCookies(cookies);
+  if (!verified) {
+    return reply.code(400).send({ error: { message: "Cookie 校验失败：Google 未返回登录态（缺 LSID 或已过期）" } });
+  }
+
+  const existing = accountPool.all().find((a) => a.id === id);
+  accountPool.addOrUpdate({
+    id,
+    email: existing?.email,
+    disabled: typeof body.disabled === "boolean" ? body.disabled : existing?.disabled,
+    cookies,
+  });
+  // Drop any live context: it still holds the previous cookie jar.
+  await browserHub.closeAccount(id);
+  accountPool.save();
+  return { ok: true, verified, data: accountPool.snapshot().find((a) => a.id === id) };
+});
+
+app.delete("/admin/api/accounts/:id", async (req) => {
+  const id = String((req.params as any).id || "");
+  accountPool.remove(id);
+  await browserHub.closeAccount(id);
+  accountPool.save();
+  return { ok: true };
+});
+
+app.patch("/admin/api/accounts/:id", async (req) => {
+  const id = String((req.params as any).id || "");
+  const body = (req.body || {}) as any;
+  const acc = accountPool.all().find((a) => a.id === id);
+  if (acc && typeof body.disabled === "boolean") acc.disabled = body.disabled;
+  accountPool.save();
+  return { ok: true };
+});
+
+app.delete("/admin/api/accounts", async (req) => {
+  const body = (req.body || {}) as any;
+  const ids = Array.isArray(body.ids) ? body.ids.map(String) : [];
+  for (const id of ids) {
+    accountPool.remove(id);
+    await browserHub.closeAccount(id);
+  }
+  if (ids.length) accountPool.save();
+  return { ok: true, removed: ids.length };
+});
+
+app.get("/admin/api/logs", async (req) => {
+  const q = (req.query || {}) as any;
+  return logStore.page(Number(q.page || 1), Number(q.size || 20));
+});
+
+app.delete("/admin/api/logs", async (req) => {
+  const body = (req.body || {}) as any;
+  const ids = Array.isArray(body.ids) ? body.ids.map(String) : [];
+  return { ok: true, removed: logStore.remove(ids) };
+});
+
 async function main() {
   accountPool.load();
+  logStore.load();
   if (!accountPool.count()) {
-    app.log.warn("no accounts loaded; run login script and write " + config.accountsFile);
+    app.log.warn("no accounts loaded; add one via the /admin page");
   }
   sweepDisk();
   sweeper();
@@ -316,6 +483,7 @@ for (const sig of ["SIGINT", "SIGTERM"] as const) {
   process.on(sig, async () => {
     try {
       accountPool.save();
+      accountPool.saveStats();
       if (config.chromeCdpUrl) await browserHub.closeBotTabs();
       else await browserHub.close();
     } catch {}
