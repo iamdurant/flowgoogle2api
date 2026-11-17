@@ -155,8 +155,8 @@ async function runOnAccount(acc: Account, workerIndex: number, model: ModelDef, 
         // burning the whole request on as29s retries for the same id.
         for (let attempt = 0; attempt < 2 && !saved; attempt++) {
           const ids = refIds.length
-            ? await client.agentEdit({ projectId, prompt: opts.prompt, model, aspect, mediaIds: refIds })
-            : await client.agentGenerate({ projectId, prompt: opts.prompt, model, aspect });
+            ? await client.agentEdit({ projectId, prompt: opts.prompt, model, aspect, mediaIds: refIds }).catch(tagGeneration)
+            : await client.agentGenerate({ projectId, prompt: opts.prompt, model, aspect }).catch(tagGeneration);
           // Fresh ids may include the reference images we just uploaded; only the
           // agent's own output can be promoted with as29s.
           const candidates = ids.filter((id) => !refIds.includes(id));
@@ -187,14 +187,16 @@ async function runOnAccount(acc: Account, workerIndex: number, model: ModelDef, 
 
     for (let i = 0; i < n; i++) {
       const token = await session.mint("IMAGE_GENERATION");
-      const gen = await client.generate({
-        projectId,
-        prompt: opts.prompt,
-        model,
-        token,
-        refs: refIds.length ? refIds : undefined,
-        aspect: ASPECT_ENUM[aspect] ?? ASPECT_ENUM["16:9"],
-      });
+      const gen = await client
+        .generate({
+          projectId,
+          prompt: opts.prompt,
+          model,
+          token,
+          refs: refIds.length ? refIds : undefined,
+          aspect: ASPECT_ENUM[aspect] ?? ASPECT_ENUM["16:9"],
+        })
+        .catch(tagGeneration);
 
       let buffer: Buffer | null = null;
       let contentType = "image/png";
@@ -268,6 +270,18 @@ function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
   }) as Promise<T>;
 }
 
+/** Mark failures raised by the generation RPC so they can be retried elsewhere. */
+function tagGeneration(e: any): never {
+  e.phase = "generate";
+  throw e;
+}
+
+function isGenerationRiskControl(e: unknown): boolean {
+  const err = e as any;
+  if (err?.phase !== "generate") return false;
+  return /UNUSUAL_ACTIVITY/.test(String(err?.code || "") + String(err?.message || ""));
+}
+
 async function runOnce(opts: GenerateOptions): Promise<GeneratedImage[]> {
   const model = findModel(opts.modelName);
   const tried = new Set<string>();
@@ -288,9 +302,21 @@ async function runOnce(opts: GenerateOptions): Promise<GeneratedImage[]> {
       // one at a time so the freshly opened pages never fire together.
       rampRelease = await accountPool.rampWait(acc.id);
       await paceAccount(acc.id);
-      const images = await withTimeout(runOnAccount(acc, workerIndex, model, opts), config.generateTimeoutMs + 30_000);
+      let lane = workerIndex;
+      let images: GeneratedImage[];
+      try {
+        images = await withTimeout(runOnAccount(acc, lane, model, opts), config.generateTimeoutMs + 30_000);
+      } catch (e) {
+        // The flagged tab is already retired; the request itself was fine, so
+        // give it one chance on another tab of the same account.
+        if (!isGenerationRiskControl(e)) throw e;
+        lane = (lane + 1) % Math.max(1, config.workersPerAccount);
+        console.error("risk control on worker " + workerIndex + " of " + acc.id + "; retrying on worker " + lane);
+        await paceAccount(acc.id);
+        images = await withTimeout(runOnAccount(acc, lane, model, opts), config.generateTimeoutMs + 30_000);
+      }
       accountPool.markAuthFailed(acc.id, false);
-      accountPool.markRampWarm(acc.id, workerIndex);
+      accountPool.markRampWarm(acc.id, lane);
       accountPool.markResult(acc.id, true);
       return images;
     } catch (e) {
@@ -302,9 +328,6 @@ async function runOnce(opts: GenerateOptions): Promise<GeneratedImage[]> {
         if (/QUOTA/.test(code)) {
           accountPool.coolDown(acc.id, model.rpcModel, QUOTA_COOLDOWN_MS);
           continue;
-        }
-        if (/UNUSUAL_ACTIVITY/.test(code)) {
-          console.error("risk control flagged " + acc.id + " on worker " + workerIndex);
         }
         if (/AUTH|UNAUTHENTICATED|CREDENTIALS|SESSION/.test(code) || /401|403/.test(String(e.status))) {
           accountPool.markAuthFailed(acc.id, true);

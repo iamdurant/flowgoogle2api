@@ -174,7 +174,22 @@ export class BrowserHub {
     const p = worker.queue.then(() => fn(worker));
     worker.queue = p.catch(() => {});
     worker.lastUsed = Date.now();
-    return p;
+    try {
+      return await p;
+    } catch (e) {
+      // Once Google flags a tab it keeps rejecting every call from that page.
+      // The tab is scrap: drop it so the next request opens a fresh one.
+      if (/UNUSUAL_ACTIVITY/.test(String((e as Error)?.message || e))) this.retire(account, index, worker);
+      throw e;
+    }
+  }
+
+  private retire(account: Account, index: number, worker: Worker) {
+    const slot = this.slots.get(account.id);
+    if (slot && slot.workers[index] === worker) delete slot.workers[index];
+    accountPool.markRampCold(account.id, index);
+    console.error("retired worker " + index + " of " + account.id + " after upstream risk control");
+    worker.page.close().catch(() => {});
   }
 
   /** Close the tabs this service opened (marked with the flowbot session flag). */
@@ -412,14 +427,14 @@ export class BrowserHub {
     if (!slot) return;
     this.slots.delete(accountId);
     accountPool.resetRamp(accountId);
-    for (const w of slot.workers) await w.page.close().catch(() => {});
+    for (const w of slot.workers) if (w) await w.page.close().catch(() => {});
     // Drop the context too: a replaced cookie jar must not keep living in it.
     await slot.context.close().catch(() => {});
   }
 
   async close() {
     for (const slot of this.slots.values()) {
-      for (const w of slot.workers) await w.page.close().catch(() => {});
+      for (const w of slot.workers) if (w) await w.page.close().catch(() => {});
     }
     this.slots.clear();
     await this.browser?.close().catch(() => {});
