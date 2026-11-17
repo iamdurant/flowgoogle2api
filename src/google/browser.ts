@@ -1,6 +1,6 @@
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright-core";
 import { config } from "../config.js";
-import type { Account, CookieRecord } from "../accounts.js";
+import { accountPool, type Account, type CookieRecord } from "../accounts.js";
 
 export type BootInfo = { at: string; sid: string; bl: string; fetchedAt: number };
 
@@ -74,6 +74,8 @@ export class BrowserHub {
         this.slots.clear();
         this.opening.clear();
         this.openingWorkers.clear();
+        // Every page died with the browser; the next ones must ramp up again.
+        accountPool.resetRamps();
       }
     });
   }
@@ -122,6 +124,7 @@ export class BrowserHub {
     while (this.slots.size > this.maxAccounts && entries.length) {
       const [id, slot] = entries.shift()!;
       this.slots.delete(id);
+      accountPool.resetRamp(id);
       await slot.context.close().catch(() => {});
     }
   }
@@ -157,6 +160,8 @@ export class BrowserHub {
       return existing;
     }
     const page = await slot.context.newPage();
+    // A new tab has never generated anything: it joins the serial warmup ramp.
+    accountPool.markRampCold(account.id, index);
     await page.goto("https://flow.google.com/", { waitUntil: "domcontentloaded", timeout: 90_000 }).catch(() => {});
     await page.evaluate("(() => { sessionStorage.setItem('flowbot', '1'); })()").catch(() => {});
     const worker: Worker = { page, queue: Promise.resolve(), lastUsed: Date.now() };
@@ -406,6 +411,7 @@ export class BrowserHub {
     const slot = this.slots.get(accountId);
     if (!slot) return;
     this.slots.delete(accountId);
+    accountPool.resetRamp(accountId);
     for (const w of slot.workers) await w.page.close().catch(() => {});
   }
 
