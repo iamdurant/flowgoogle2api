@@ -53,6 +53,9 @@ export class AccountPool {
   private inflight = new Map<string, number>();
   private workerCursor = new Map<string, number>();
   private cursor = 0;
+  /** Worker tabs that already completed one generation; missing = still cold. */
+  private rampDone = new Map<string, Set<number>>();
+  private rampChains = new Map<string, Promise<void>>();
 
   load() {
     const file = path.resolve(config.accountsFile);
@@ -100,6 +103,50 @@ export class AccountPool {
 
   release(id: string) {
     this.inflight.set(id, Math.max(0, (this.inflight.get(id) || 1) - 1));
+  }
+
+  /**
+   * The cold start is the dangerous moment: several freshly opened tabs firing
+   * ogiZ0b within the same second look like automation and get the account
+   * flagged. Requests are serialised per account until every worker tab has
+   * completed one generation, which is what a human-paced warmup does.
+   */
+  rampActive(id: string) {
+    return (this.rampDone.get(id)?.size ?? 0) < Math.max(1, config.workersPerAccount);
+  }
+
+  markRampWarm(id: string, workerIndex: number) {
+    const warm = this.rampDone.get(id) ?? new Set<number>();
+    if (warm.has(workerIndex)) return;
+    warm.add(workerIndex);
+    this.rampDone.set(id, warm);
+    const workers = Math.max(1, config.workersPerAccount);
+    if (warm.size >= workers) console.log("warmup ramp complete for " + id + " (" + workers + " tabs); concurrency enabled");
+  }
+
+  /** A freshly created tab is cold again and has to warm up on its own. */
+  markRampCold(id: string, workerIndex: number) {
+    this.rampDone.get(id)?.delete(workerIndex);
+  }
+
+  resetRamp(id: string) {
+    this.rampDone.delete(id);
+  }
+
+  resetRamps() {
+    this.rampDone.clear();
+    this.rampChains.clear();
+  }
+
+  /** FIFO slot per account while ramping; a no-op once the ramp is complete. */
+  async rampWait(id: string): Promise<() => void> {
+    if (!this.rampActive(id)) return () => {};
+    const prev = this.rampChains.get(id) ?? Promise.resolve();
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    this.rampChains.set(id, prev.then(() => held));
+    await prev;
+    return release;
   }
 
   inflightOf(id: string) {

@@ -249,16 +249,22 @@ export async function generateImages(opts: GenerateOptions): Promise<GeneratedIm
   }
 
   const release = await gate.acquire(config.queueTimeoutMs);
-  let timer: NodeJS.Timeout | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error("generation timed out")), config.generateTimeoutMs + 30_000);
-  });
   try {
-    return await Promise.race([runOnce(opts), timeout]);
+    return await runOnce(opts);
   } finally {
-    if (timer) clearTimeout(timer);
     release();
   }
+}
+
+/** Budget covers one generation, not the time a request waits in the warmup queue. */
+function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("generation timed out")), ms);
+  });
+  return Promise.race([work, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  }) as Promise<T>;
 }
 
 async function runOnce(opts: GenerateOptions): Promise<GeneratedImage[]> {
@@ -275,10 +281,15 @@ async function runOnce(opts: GenerateOptions): Promise<GeneratedImage[]> {
       break;
     }
     tried.add(acc.id);
+    let rampRelease: () => void = () => {};
     try {
+      // Until every tab of this account has produced one image, serve requests
+      // one at a time so the freshly opened pages never fire together.
+      rampRelease = await accountPool.rampWait(acc.id);
       await paceAccount(acc.id);
-      const images = await runOnAccount(acc, workerIndex, model, opts);
+      const images = await withTimeout(runOnAccount(acc, workerIndex, model, opts), config.generateTimeoutMs + 30_000);
       accountPool.markAuthFailed(acc.id, false);
+      accountPool.markRampWarm(acc.id, workerIndex);
       return images;
     } catch (e) {
       lastErr = e;
@@ -287,6 +298,9 @@ async function runOnce(opts: GenerateOptions): Promise<GeneratedImage[]> {
         if (/QUOTA/.test(code)) {
           accountPool.coolDown(acc.id, model.rpcModel, QUOTA_COOLDOWN_MS);
           continue;
+        }
+        if (/UNUSUAL_ACTIVITY/.test(code)) {
+          console.error("risk control flagged " + acc.id + " on worker " + workerIndex);
         }
         if (/AUTH|UNAUTHENTICATED|CREDENTIALS|SESSION/.test(code) || /401|403/.test(String(e.status))) {
           accountPool.markAuthFailed(acc.id, true);
@@ -302,6 +316,7 @@ async function runOnce(opts: GenerateOptions): Promise<GeneratedImage[]> {
       if (/project/i.test(msg)) forgetProject(acc);
       throw e;
     } finally {
+      rampRelease();
       accountPool.release(acc.id);
     }
   }
